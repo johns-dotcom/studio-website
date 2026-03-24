@@ -697,13 +697,72 @@ def confirm_booking(booking_id):
 
         print(f"[Booking] Confirmed: {event_title} on {booking['date']} at {booking['start_time']}", file=sys.stderr)
 
+        # Send confirmation email to the client
+        client_contact = booking.get("client_contact", "")
+        if "@" in client_contact and _google_creds:
+            try:
+                import threading
+                import base64
+
+                # Format the start time for display (e.g., "20:00" -> "8:00 PM")
+                try:
+                    from datetime import datetime as dt_cls
+                    t = dt_cls.strptime(booking['start_time'], "%H:%M")
+                    display_time = t.strftime("%-I:%M %p")
+                except:
+                    display_time = booking['start_time']
+
+                client_html = f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #2D5A3D;">Your Booking is Confirmed!</h2>
+  <p>Hey {booking['client_name'].split()[0]},</p>
+  <p>Your session at <strong>The Nest Studio</strong> has been confirmed. Here are the details:</p>
+  <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
+    <tr><td style="padding: 8px 0; color: #6B6B6B;">Room</td><td style="padding: 8px 0;"><strong>{booking['room']}</strong></td></tr>
+    <tr><td style="padding: 8px 0; color: #6B6B6B;">Date</td><td style="padding: 8px 0;"><strong>{booking['date']}</strong></td></tr>
+    <tr><td style="padding: 8px 0; color: #6B6B6B;">Time</td><td style="padding: 8px 0;"><strong>{display_time}</strong></td></tr>
+    <tr><td style="padding: 8px 0; color: #6B6B6B;">Duration</td><td style="padding: 8px 0;"><strong>{booking['duration']}</strong></td></tr>
+    <tr><td style="padding: 8px 0; color: #6B6B6B;">Est. Cost</td><td style="padding: 8px 0;"><strong>{booking.get('estimated_cost', 'TBD')}</strong></td></tr>
+  </table>
+  <p>If you have any questions or need to make changes, reach out to us at <a href="mailto:turq@sturdy.co">turq@sturdy.co</a>.</p>
+  <p style="margin-top: 1.5rem;">See you at The Nest!</p>
+</div>"""
+
+                client_subject = f"Booking Confirmed — {booking['room']} on {booking['date']}"
+
+                def _send_client_confirmation(creds, client_email, subject, html_body):
+                    try:
+                        from googleapiclient.discovery import build as gbuild
+                        from google.auth.transport.requests import Request as GRequest
+                        if not creds.valid:
+                            creds.refresh(GRequest())
+                        gmail = gbuild("gmail", "v1", credentials=creds)
+                        msg = MIMEMultipart("alternative")
+                        msg["To"] = client_email
+                        msg["Subject"] = subject
+                        msg.attach(MIMEText(html_body, "html"))
+                        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+                        gmail.users().messages().send(userId="me", body={"raw": raw}).execute()
+                        print(f"[Email] Client confirmation sent to {client_email}", file=sys.stderr)
+                    except Exception as ex:
+                        print(f"[Email] Client confirmation failed: {ex}", file=sys.stderr)
+
+                threading.Thread(
+                    target=_send_client_confirmation,
+                    args=(_google_creds, client_contact, client_subject, client_html),
+                    daemon=True
+                ).start()
+            except Exception as ex:
+                print(f"[Email] Failed to queue client confirmation: {ex}", file=sys.stderr)
+
         return f"""
         <html><body style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 50px auto; text-align: center;">
         <h2 style="color: #2D5A3D;">Booking Confirmed!</h2>
         <p><strong>{booking['room']}</strong></p>
         <p>{booking['date']} at {booking['start_time']} ({booking['duration']})</p>
         <p>Client: {booking['client_name']} ({booking['client_contact']})</p>
-        <p style="margin-top: 2rem; color: #6B6B6B;">Added to THE NEST RECORDING STUDIO SCHEDULE calendar.</p>
+        <p style="margin-top: 1rem; color: #2D5A3D;">A confirmation email has been sent to the client.</p>
+        <p style="margin-top: 1rem; color: #6B6B6B;">Added to THE NEST RECORDING STUDIO SCHEDULE calendar.</p>
         </body></html>
         """
 
