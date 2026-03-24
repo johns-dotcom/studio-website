@@ -141,6 +141,8 @@ When a client wants to book:
 4. Ask for their name and email/phone
 5. Once you have all info, use the submit_booking_request tool to send the request
 
+IMPORTANT: Pay close attention to the full conversation history. If the client has already mentioned the room, date, time, or duration earlier in the conversation (e.g., during an availability check), DO NOT ask for that information again. Use what they've already told you and only ask for the remaining missing details.
+
 When a client asks about availability:
 - You MUST ALWAYS use the check_availability tool IMMEDIATELY. NEVER ask clarifying questions first — just check.
 - If the client doesn't specify a room, check ALL rooms (call the tool 3 times: a_room, b_room, full_studio) and report what's available across the board.
@@ -736,7 +738,7 @@ def chat():
         print(f"[Chat] Sending message: {user_message[:80]}...", file=sys.stderr)
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=500,
+            max_tokens=1024,
             system=get_system_prompt(),
             tools=TOOLS,
             messages=history
@@ -777,7 +779,7 @@ def chat():
             # Continue the conversation with tool results
             response = client.messages.create(
                 model="claude-sonnet-4-20250514",
-                max_tokens=500,
+                max_tokens=1024,
                 system=get_system_prompt(),
                 tools=TOOLS,
                 messages=history
