@@ -253,7 +253,7 @@ def get_google_creds():
     import pickle
     import base64
 
-    SCOPES = ["https://www.googleapis.com/auth/calendar"]
+    SCOPES = ["https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/gmail.send"]
     creds = None
     token_path = Path(__file__).parent / "token.pickle"
     creds_path = Path(__file__).parent / config["google_calendar"]["credentials_file"]
@@ -496,16 +496,18 @@ def submit_booking_request(room: str, date: str, start_time: str,
     base_url = os.environ.get("BASE_URL", f"http://localhost:{config.get('port', 8888)}")
     confirm_url = f"{base_url}/api/confirm/{booking_id}"
 
-    # Try to send email notification
+    # Try to send email notification via Gmail API (using existing Google OAuth)
     email_sent = False
     try:
         import threading
+        import base64
 
         recipients = config.get("notification_emails", [])
         if isinstance(recipients, str):
             recipients = [recipients]
 
-        # HTML email body (shared by both methods)
+        subject = f"New Booking Request — {room_name} on {date}"
+
         html_body = f"""
 <div style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto;">
   <h2 style="color: #1A1A1A;">New Booking Request</h2>
@@ -523,63 +525,46 @@ def submit_booking_request(room: str, date: str, start_time: str,
   <p style="color: #6B6B6B; font-size: 14px; margin-top: 1rem;">Clicking the button will add this booking to THE NEST RECORDING STUDIO SCHEDULE.</p>
 </div>"""
 
-        subject = f"New Booking Request — {room_name} on {date}"
+        global _google_creds
+        if _google_creds and recipients:
+            from googleapiclient.discovery import build
+            from google.auth.transport.requests import Request
 
-        # Method 1: Resend API (works on Railway and all cloud hosts)
-        resend_key = os.environ.get("RESEND_API_KEY") or config.get("resend_api_key")
-        resend_from = os.environ.get("RESEND_FROM_EMAIL") or config.get("resend_from_email", "The Nest Studio <onboarding@resend.dev>")
-
-        if resend_key and recipients:
-            import urllib.request
-
-            def _send_resend(resend_key, resend_from, recipients, subject, html_body):
+            def _send_gmail(creds, recipients, subject, html_body):
                 try:
-                    payload = json.dumps({
-                        "from": resend_from,
-                        "to": recipients,
-                        "subject": subject,
-                        "html": html_body
-                    }).encode()
+                    # Refresh token if needed
+                    if not creds.valid:
+                        creds.refresh(Request())
 
-                    req = urllib.request.Request(
-                        "https://api.resend.com/emails",
-                        data=payload,
-                        headers={
-                            "Authorization": f"Bearer {resend_key}",
-                            "Content-Type": "application/json"
-                        }
-                    )
-                    resp = urllib.request.urlopen(req, timeout=15)
-                    print(f"[Email] Resend notification sent to {recipients} (status {resp.status})", file=sys.stderr)
+                    gmail_service = build("gmail", "v1", credentials=creds)
+
+                    # Build the email message
+                    msg = MIMEMultipart("alternative")
+                    msg["To"] = ", ".join(recipients)
+                    msg["Subject"] = subject
+                    msg.attach(MIMEText(html_body, "html"))
+
+                    # Encode and send via Gmail API
+                    raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+                    gmail_service.users().messages().send(
+                        userId="me",
+                        body={"raw": raw_message}
+                    ).execute()
+
+                    print(f"[Email] Gmail notification sent to {recipients}", file=sys.stderr)
                 except Exception as ex:
-                    print(f"[Email] Resend failed: {ex}", file=sys.stderr)
+                    import traceback
+                    traceback.print_exc()
+                    print(f"[Email] Gmail API failed: {ex}", file=sys.stderr)
 
-            threading.Thread(target=_send_resend, args=(resend_key, resend_from, recipients, subject, html_body), daemon=True).start()
+            threading.Thread(target=_send_gmail, args=(_google_creds, recipients, subject, html_body), daemon=True).start()
             email_sent = True
+        else:
+            print("[Email] No Google credentials or recipients configured", file=sys.stderr)
 
-        # Method 2: SMTP fallback (works locally)
-        elif not resend_key:
-            smtp_config = config.get("smtp", {})
-            if smtp_config.get("username") and smtp_config.get("password") and "YOUR_" not in smtp_config.get("password", "YOUR_"):
-                msg = MIMEMultipart("alternative")
-                msg["From"] = smtp_config["username"]
-                msg["To"] = ", ".join(recipients)
-                msg["Subject"] = subject
-                msg.attach(MIMEText(html_body, "html"))
-
-                def _send_smtp(msg, smtp_config, recipients):
-                    try:
-                        with smtplib.SMTP(smtp_config["host"], smtp_config["port"], timeout=15) as srv:
-                            srv.starttls()
-                            srv.login(smtp_config["username"], smtp_config["password"])
-                            srv.send_message(msg)
-                        print(f"[Email] SMTP notification sent to {recipients}", file=sys.stderr)
-                    except Exception as ex:
-                        print(f"[Email] SMTP failed: {ex}", file=sys.stderr)
-
-                threading.Thread(target=_send_smtp, args=(msg, smtp_config, recipients), daemon=True).start()
-                email_sent = True
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Email notification failed: {e}", file=sys.stderr)
 
     return {
