@@ -86,12 +86,26 @@ def images(filename):
 # ── SYSTEM PROMPT ───────────────────────────────────────────────────────────
 
 def get_system_prompt():
-    now = datetime.now()
+    import pytz
+    la_tz = pytz.timezone("America/Los_Angeles")
+    now = datetime.now(la_tz)
     today = now.strftime("%Y-%m-%d")
     day_of_week = now.strftime("%A")
+    # Pre-compute key reference dates so the model doesn't have to do date math
+    days_until_friday = (4 - now.weekday()) % 7  # 4 = Friday
+    if days_until_friday == 0 and now.hour >= 23:
+        days_until_friday = 7  # If it's late Friday, "this Friday" = next Friday
+    this_friday = (now + timedelta(days=days_until_friday)).strftime("%Y-%m-%d")
+    this_saturday = (now + timedelta(days=(5 - now.weekday()) % 7)).strftime("%Y-%m-%d")
+    this_sunday = (now + timedelta(days=(6 - now.weekday()) % 7)).strftime("%Y-%m-%d")
+
     return f"""You are the AI assistant for The Nest Studio, a premium recording studio. You speak on behalf of the studio in a warm, professional, and knowledgeable tone. You're helpful but not overly formal — think friendly studio manager, not corporate receptionist.
 
-Today is {day_of_week}, {today}. ALWAYS use this exact date as your reference when converting relative dates. For example, if today is Monday 2026-03-23, then "this Friday" = 2026-03-27 (4 days from now). ALWAYS use the current year ({now.year}).
+Today is {day_of_week}, {today} (Los Angeles time). ALWAYS use this exact date as your reference when converting relative dates. Here are pre-computed reference dates — use these EXACTLY, do NOT recalculate:
+- "this Friday" = {this_friday}
+- "this Saturday" = {this_saturday}
+- "this Sunday" = {this_sunday}
+- For other days, count forward from today ({today}, {day_of_week}). ALWAYS use the current year ({now.year}).
 
 ## STUDIO INFO
 
