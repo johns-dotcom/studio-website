@@ -499,37 +499,14 @@ def submit_booking_request(room: str, date: str, start_time: str,
     # Try to send email notification
     email_sent = False
     try:
-        smtp_config = config.get("smtp", {})
-        if smtp_config.get("username") and smtp_config.get("password") and "YOUR_" not in smtp_config.get("password", "YOUR_"):
-            recipients = config.get("notification_emails", [config.get("notification_email", "")])
-            if isinstance(recipients, str):
-                recipients = [recipients]
+        import threading
 
-            msg = MIMEMultipart("alternative")
-            msg["From"] = smtp_config["username"]
-            msg["To"] = ", ".join(recipients)
-            msg["Subject"] = f"New Booking Request — {room_name} on {date}"
+        recipients = config.get("notification_emails", [])
+        if isinstance(recipients, str):
+            recipients = [recipients]
 
-            # Plain text version
-            plain_body = f"""New booking request from The Nest Studio website:
-
-Room: {room_name}
-Date: {date}
-Time: {start_time}
-Duration: {duration_label}
-Estimated Cost: ${estimated_cost:,.0f}
-
-Client: {client_name}
-Contact: {client_contact}
-Notes: {notes or 'None'}
-
-To confirm this booking and add it to the studio calendar, click:
-{confirm_url}
-
-Or reply to the client to discuss details."""
-
-            # HTML version with confirm button
-            html_body = f"""
+        # HTML email body (shared by both methods)
+        html_body = f"""
 <div style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto;">
   <h2 style="color: #1A1A1A;">New Booking Request</h2>
   <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
@@ -546,23 +523,62 @@ Or reply to the client to discuss details."""
   <p style="color: #6B6B6B; font-size: 14px; margin-top: 1rem;">Clicking the button will add this booking to THE NEST RECORDING STUDIO SCHEDULE.</p>
 </div>"""
 
-            msg.attach(MIMEText(plain_body, "plain"))
-            msg.attach(MIMEText(html_body, "html"))
+        subject = f"New Booking Request — {room_name} on {date}"
 
-            # Send email in a background thread so it doesn't block the chat response
-            import threading
-            def _send_email(msg, smtp_config, recipients):
+        # Method 1: Resend API (works on Railway and all cloud hosts)
+        resend_key = os.environ.get("RESEND_API_KEY") or config.get("resend_api_key")
+        resend_from = os.environ.get("RESEND_FROM_EMAIL") or config.get("resend_from_email", "The Nest Studio <onboarding@resend.dev>")
+
+        if resend_key and recipients:
+            import urllib.request
+
+            def _send_resend(resend_key, resend_from, recipients, subject, html_body):
                 try:
-                    with smtplib.SMTP(smtp_config["host"], smtp_config["port"], timeout=15) as srv:
-                        srv.starttls()
-                        srv.login(smtp_config["username"], smtp_config["password"])
-                        srv.send_message(msg)
-                    print(f"[Email] Notification sent to {recipients}", file=sys.stderr)
-                except Exception as ex:
-                    print(f"[Email] Failed to send: {ex}", file=sys.stderr)
+                    payload = json.dumps({
+                        "from": resend_from,
+                        "to": recipients,
+                        "subject": subject,
+                        "html": html_body
+                    }).encode()
 
-            threading.Thread(target=_send_email, args=(msg, smtp_config, recipients), daemon=True).start()
-            email_sent = True  # Optimistic — it's being sent in background
+                    req = urllib.request.Request(
+                        "https://api.resend.com/emails",
+                        data=payload,
+                        headers={
+                            "Authorization": f"Bearer {resend_key}",
+                            "Content-Type": "application/json"
+                        }
+                    )
+                    resp = urllib.request.urlopen(req, timeout=15)
+                    print(f"[Email] Resend notification sent to {recipients} (status {resp.status})", file=sys.stderr)
+                except Exception as ex:
+                    print(f"[Email] Resend failed: {ex}", file=sys.stderr)
+
+            threading.Thread(target=_send_resend, args=(resend_key, resend_from, recipients, subject, html_body), daemon=True).start()
+            email_sent = True
+
+        # Method 2: SMTP fallback (works locally)
+        elif not resend_key:
+            smtp_config = config.get("smtp", {})
+            if smtp_config.get("username") and smtp_config.get("password") and "YOUR_" not in smtp_config.get("password", "YOUR_"):
+                msg = MIMEMultipart("alternative")
+                msg["From"] = smtp_config["username"]
+                msg["To"] = ", ".join(recipients)
+                msg["Subject"] = subject
+                msg.attach(MIMEText(html_body, "html"))
+
+                def _send_smtp(msg, smtp_config, recipients):
+                    try:
+                        with smtplib.SMTP(smtp_config["host"], smtp_config["port"], timeout=15) as srv:
+                            srv.starttls()
+                            srv.login(smtp_config["username"], smtp_config["password"])
+                            srv.send_message(msg)
+                        print(f"[Email] SMTP notification sent to {recipients}", file=sys.stderr)
+                    except Exception as ex:
+                        print(f"[Email] SMTP failed: {ex}", file=sys.stderr)
+
+                threading.Thread(target=_send_smtp, args=(msg, smtp_config, recipients), daemon=True).start()
+                email_sent = True
     except Exception as e:
         print(f"Email notification failed: {e}", file=sys.stderr)
 
