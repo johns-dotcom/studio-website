@@ -1,0 +1,17 @@
+# Secrets — never commit these
+config.json
+google_credentials.json
+token.pickle
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Data files
+bookings.json
+
+# OS files
+.DS_Store
+Thumbs.db
