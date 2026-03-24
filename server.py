@@ -549,11 +549,20 @@ Or reply to the client to discuss details."""
             msg.attach(MIMEText(plain_body, "plain"))
             msg.attach(MIMEText(html_body, "html"))
 
-            with smtplib.SMTP(smtp_config["host"], smtp_config["port"]) as server:
-                server.starttls()
-                server.login(smtp_config["username"], smtp_config["password"])
-                server.send_message(msg)
-            email_sent = True
+            # Send email in a background thread so it doesn't block the chat response
+            import threading
+            def _send_email(msg, smtp_config, recipients):
+                try:
+                    with smtplib.SMTP(smtp_config["host"], smtp_config["port"], timeout=15) as srv:
+                        srv.starttls()
+                        srv.login(smtp_config["username"], smtp_config["password"])
+                        srv.send_message(msg)
+                    print(f"[Email] Notification sent to {recipients}", file=sys.stderr)
+                except Exception as ex:
+                    print(f"[Email] Failed to send: {ex}", file=sys.stderr)
+
+            threading.Thread(target=_send_email, args=(msg, smtp_config, recipients), daemon=True).start()
+            email_sent = True  # Optimistic — it's being sent in background
     except Exception as e:
         print(f"Email notification failed: {e}", file=sys.stderr)
 
