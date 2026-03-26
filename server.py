@@ -148,7 +148,7 @@ Today is {day_of_week}, {today} (Los Angeles time). ALWAYS use this exact date a
 - Do NOT invent or fabricate gear lists, room dimensions, or technical specs you don't know. If asked about specific gear you're not sure about, say you'll need to confirm and suggest they email for details.
 
 ## BOOKING FLOW
-To submit a booking you need these details: room (a_room/b_room/full_studio), date (YYYY-MM-DD), start_time (HH:MM 24hr), duration_hours (number), client_name, client_contact (email or phone).
+To submit a booking you need these details: room (a_room/b_room/full_studio), date (YYYY-MM-DD), start_time (HH:MM 24hr), duration_hours (number), client_name, client_contact (must be an email address — do NOT accept phone numbers, politely ask for an email instead).
 
 CRITICAL RULES:
 - CAREFULLY re-read the ENTIRE conversation history before responding. If the client has ALREADY provided any of these details — room, date, time, duration, name, contact — in ANY previous message, you MUST use that information. NEVER re-ask for something already stated.
@@ -242,7 +242,7 @@ TOOLS = [
                 },
                 "client_contact": {
                     "type": "string",
-                    "description": "Client's email or phone"
+                    "description": "Client's email address (must be a valid email — do not accept phone numbers)"
                 },
                 "notes": {
                     "type": "string",
