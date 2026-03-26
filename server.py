@@ -413,7 +413,15 @@ def check_availability(room: str, date: str) -> dict:
             # Check if event has no room tag at all (assume it blocks all rooms)
             has_any_tag = any(tag in summary for tags in room_tags.values() for tag in tags)
 
-            if is_for_this_room or is_full_lockout or not has_any_tag:
+            # Full Studio requires BOTH rooms — so ANY room booking blocks it
+            is_any_room_booked = False
+            if room == "full_studio":
+                is_any_room_booked = any(
+                    tag in summary
+                    for tag in room_tags["a_room"] + room_tags["b_room"] + room_tags["full_studio"]
+                )
+
+            if is_for_this_room or is_full_lockout or is_any_room_booked or not has_any_tag:
                 relevant_events.append(event)
 
         print(f"[Calendar] {len(relevant_events)} events relevant to {room_name}", file=sys.stderr)
