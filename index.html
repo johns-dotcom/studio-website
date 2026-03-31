@@ -382,27 +382,98 @@ section { padding: 7rem 2rem; }
   color: var(--accent);
   margin-top: 0.25rem;
 }
-.day-detail-cta-row {
-  display: flex; flex-wrap: wrap; gap: 0.5rem;
-  margin-top: 1rem;
+/* ── BOOKING FORM ── */
+.booking-form {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  text-align: left;
 }
-.day-detail-cta {
-  display: inline-block;
-  padding: 0.6rem 1.5rem;
+.form-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.1rem; font-weight: 400;
+  margin-bottom: 1.2rem;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.form-group {
+  display: flex; flex-direction: column;
+}
+.form-group label {
+  font-size: 0.75rem; font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+.form-group input,
+.form-group select {
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--white);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.form-group input:focus,
+.form-group select:focus {
+  border-color: var(--accent);
+}
+.form-group input::placeholder {
+  color: #bbb;
+}
+.form-group input[readonly] {
+  background: var(--bg);
+  color: var(--text-muted);
+}
+.form-actions {
+  margin-top: 1.2rem;
+}
+.form-submit {
+  width: 100%;
+  padding: 0.85rem 2rem;
   background: var(--dark);
   color: var(--white);
-  border: none; border-radius: 6px;
-  font-size: 0.85rem; font-weight: 600;
+  border: none; border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.92rem; font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
 }
-.day-detail-cta:hover { background: var(--accent); }
-.day-detail-cta.secondary {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
+.form-submit:hover { background: var(--accent); }
+.form-submit:disabled {
+  background: var(--border);
+  cursor: not-allowed;
 }
-.day-detail-cta.secondary:hover { border-color: var(--accent); color: var(--accent); }
+.form-status {
+  margin-top: 0.75rem;
+  font-size: 0.88rem;
+  text-align: center;
+}
+.form-status.success { color: var(--accent); }
+.form-status.error { color: #C0392B; }
+.form-alt {
+  margin-top: 1rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+.form-alt a {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .form-row { grid-template-columns: 1fr; }
+}
 
 @media (max-width: 768px) {
   .day-detail-rooms { grid-template-columns: 1fr; }
@@ -769,7 +840,48 @@ footer a { color: var(--warm); text-decoration: none; }
     <div class="day-detail" id="dayDetail">
       <h4 id="dayDetailTitle"></h4>
       <div class="day-detail-rooms" id="dayDetailRooms"></div>
-      <div class="day-detail-cta-row" id="dayDetailButtons"></div>
+      <div class="booking-form" id="bookingForm">
+        <h4 class="form-title">Request a Booking</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="formRoom">Room</label>
+            <select id="formRoom"></select>
+          </div>
+          <div class="form-group">
+            <label for="formDate">Date</label>
+            <input type="text" id="formDate" readonly>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="formStart">Start Time</label>
+            <select id="formStart"></select>
+          </div>
+          <div class="form-group">
+            <label for="formEnd">End Time</label>
+            <select id="formEnd"></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="formName">Your Name</label>
+            <input type="text" id="formName" placeholder="Full name">
+          </div>
+          <div class="form-group">
+            <label for="formEmail">Email</label>
+            <input type="email" id="formEmail" placeholder="you@email.com">
+          </div>
+        </div>
+        <div class="form-group" style="margin-top: 0.5rem;">
+          <label for="formNotes">Notes <span style="color: var(--text-muted); font-weight: 400;">(optional)</span></label>
+          <input type="text" id="formNotes" placeholder="Engineer needed, special requirements, etc.">
+        </div>
+        <div class="form-actions">
+          <button class="form-submit" id="formSubmit" onclick="submitBookingForm()">Submit Booking Request</button>
+          <div class="form-status" id="formStatus"></div>
+          <p class="form-alt">Or <a href="#" onclick="event.preventDefault(); openChatFromForm();">chat with our AI assistant</a> for questions about gear, rates, or availability.</p>
+        </div>
+      </div>
     </div>
     <div class="calendar-legend">
       <div class="legend-item"><div class="legend-dot" style="background: var(--accent);"></div> Available</div>
@@ -1135,36 +1247,141 @@ function showDayDetail(dateStr, roomData) {
     buildRoomCard('B Room', roomData.b_room, roomData.b_room_booked) +
     buildRoomCard('Full Studio', roomData.full_studio, fullStudioNote);
 
-  // Build smart booking buttons for available rooms
-  const displayDate = `${MONTHS[date.getMonth()]} ${date.getDate()}`;
-  const btns = document.getElementById('dayDetailButtons');
-  btns.innerHTML = '';
+  // Populate booking form
+  const form = document.getElementById('bookingForm');
+  const roomSelect = document.getElementById('formRoom');
+  const dateInput = document.getElementById('formDate');
+  const statusEl = document.getElementById('formStatus');
 
-  const availableRooms = [];
-  if (roomData.a_room !== 'booked') availableRooms.push({name: 'A Room', rate: '$200/hr'});
-  if (roomData.b_room !== 'booked') availableRooms.push({name: 'B Room', rate: '$100/hr'});
-  if (roomData.full_studio === 'available') availableRooms.push({name: 'Full Studio', rate: '$300/hr'});
+  statusEl.textContent = '';
+  statusEl.className = 'form-status';
+  document.getElementById('formSubmit').disabled = false;
 
-  if (availableRooms.length > 0) {
-    availableRooms.forEach((room, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'day-detail-cta' + (i > 0 ? ' secondary' : '');
-      btn.textContent = `Book ${room.name}`;
-      btn.onclick = () => {
-        document.getElementById('dayDetail').classList.remove('open');
-        toggleChat(`I'd like to book the ${room.name} on ${displayDate}`);
-      };
-      btns.appendChild(btn);
-    });
+  // Set date
+  dateInput.value = dateStr;
+  dateInput.dataset.display = `${dayName}, ${MONTHS[date.getMonth()]} ${date.getDate()}`;
+
+  // Populate room dropdown with available rooms only
+  roomSelect.innerHTML = '';
+  const roomOptions = [
+    {value: 'a_room', label: 'A Room — $200/hr', status: roomData.a_room},
+    {value: 'b_room', label: 'B Room — $100/hr', status: roomData.b_room},
+    {value: 'full_studio', label: 'Full Studio — $300/hr', status: roomData.full_studio}
+  ];
+  let hasAvailable = false;
+  roomOptions.forEach(r => {
+    if (r.status !== 'booked') {
+      const opt = document.createElement('option');
+      opt.value = r.value;
+      opt.textContent = r.label + (r.status === 'partial' ? ' (partial)' : '');
+      roomSelect.appendChild(opt);
+      hasAvailable = true;
+    }
+  });
+
+  if (!hasAvailable) {
+    form.style.display = 'none';
   } else {
-    const msg = document.createElement('span');
-    msg.style.cssText = 'font-size: 0.85rem; color: var(--text-muted);';
-    msg.textContent = 'All rooms are fully booked this day';
-    btns.appendChild(msg);
+    form.style.display = 'block';
   }
+
+  // Populate time dropdowns
+  populateTimeDropdowns();
 
   detail.classList.add('open');
   detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function populateTimeDropdowns() {
+  const startSelect = document.getElementById('formStart');
+  const endSelect = document.getElementById('formEnd');
+  startSelect.innerHTML = '';
+  endSelect.innerHTML = '';
+
+  for (let h = 8; h <= 23; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      const hour12 = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const label = `${hour12}:${String(m).padStart(2,'0')} ${ampm}`;
+      const value = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+
+      const optS = document.createElement('option');
+      optS.value = value;
+      optS.textContent = label;
+      startSelect.appendChild(optS);
+
+      const optE = document.createElement('option');
+      optE.value = value;
+      optE.textContent = label;
+      endSelect.appendChild(optE);
+    }
+  }
+
+  // Defaults: start at 10am, end at 6pm
+  startSelect.value = '10:00';
+  endSelect.value = '18:00';
+}
+
+async function submitBookingForm() {
+  const room = document.getElementById('formRoom').value;
+  const date = document.getElementById('formDate').value;
+  const startTime = document.getElementById('formStart').value;
+  const endTime = document.getElementById('formEnd').value;
+  const name = document.getElementById('formName').value.trim();
+  const email = document.getElementById('formEmail').value.trim();
+  const notes = document.getElementById('formNotes').value.trim();
+  const statusEl = document.getElementById('formStatus');
+  const submitBtn = document.getElementById('formSubmit');
+
+  // Validate
+  if (!name) { statusEl.textContent = 'Please enter your name.'; statusEl.className = 'form-status error'; return; }
+  if (!email || !email.includes('@')) { statusEl.textContent = 'Please enter a valid email.'; statusEl.className = 'form-status error'; return; }
+
+  // Calculate duration
+  const [sh, sm] = startTime.split(':').map(Number);
+  const [eh, em] = endTime.split(':').map(Number);
+  const duration = (eh + em/60) - (sh + sm/60);
+  if (duration <= 0) { statusEl.textContent = 'End time must be after start time.'; statusEl.className = 'form-status error'; return; }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Submitting...';
+  statusEl.textContent = '';
+
+  try {
+    const res = await fetch('/api/book', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room, date, start_time: startTime, duration_hours: duration, client_name: name, client_contact: email, notes })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      statusEl.textContent = 'Booking request submitted! You\'ll hear from us shortly.';
+      statusEl.className = 'form-status success';
+      submitBtn.textContent = 'Request Sent';
+      // Clear form fields
+      document.getElementById('formName').value = '';
+      document.getElementById('formEmail').value = '';
+      document.getElementById('formNotes').value = '';
+    } else {
+      statusEl.textContent = data.error || 'Something went wrong. Please try again.';
+      statusEl.className = 'form-status error';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Booking Request';
+    }
+  } catch (err) {
+    statusEl.textContent = 'Connection error. Email us at turq@sturdy.co instead.';
+    statusEl.className = 'form-status error';
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit Booking Request';
+  }
+}
+
+function openChatFromForm() {
+  const room = document.getElementById('formRoom');
+  const roomLabel = room.options[room.selectedIndex]?.textContent.split(' —')[0] || '';
+  document.getElementById('dayDetail').classList.remove('open');
+  toggleChat(`I have a question about booking the ${roomLabel}`);
 }
 
 // Init calendar on page load

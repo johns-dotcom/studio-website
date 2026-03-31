@@ -631,6 +631,42 @@ TOOL_HANDLERS = {
     "submit_booking_request": submit_booking_request,
 }
 
+# ── DIRECT BOOKING API (form submission, no chat required) ───────────────
+
+@app.route("/api/book", methods=["POST"])
+def book_direct():
+    """Handle booking form submissions directly (bypasses chat agent)."""
+    data = request.json
+    room = data.get("room", "")
+    date = data.get("date", "")
+    start_time = data.get("start_time", "")
+    duration_hours = data.get("duration_hours", 0)
+    client_name = data.get("client_name", "").strip()
+    client_contact = data.get("client_contact", "").strip()
+    notes = data.get("notes", "").strip()
+
+    # Validate required fields
+    if not all([room, date, start_time, duration_hours, client_name, client_contact]):
+        return jsonify({"success": False, "error": "All fields are required."}), 400
+    if "@" not in client_contact:
+        return jsonify({"success": False, "error": "Please provide a valid email address."}), 400
+    if duration_hours <= 0:
+        return jsonify({"success": False, "error": "End time must be after start time."}), 400
+
+    # Reuse the existing booking function
+    result = submit_booking_request(
+        room=room,
+        date=date,
+        start_time=start_time,
+        duration_hours=duration_hours,
+        client_name=client_name,
+        client_contact=client_contact,
+        notes=notes
+    )
+
+    return jsonify(result)
+
+
 # ── MONTHLY AVAILABILITY API ─────────────────────────────────────────────
 
 @app.route("/api/availability/<int:year>/<int:month>", methods=["GET"])
