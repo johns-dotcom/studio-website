@@ -1214,7 +1214,10 @@ function showDayDetail(dateStr, roomData) {
   function buildRoomCard(name, status, bookedSlots) {
     let timesHtml = '';
     if (bookedSlots && bookedSlots.length > 0) {
-      const slots = bookedSlots.map(s => `<span class="booked-slot">Booked: ${s}</span>`).join('');
+      const slots = bookedSlots.map(s => {
+        const label = (typeof s === 'object') ? s.display : s;
+        return `<span class="booked-slot">Booked: ${label}</span>`;
+      }).join('');
       timesHtml = `<div class="day-room-times">${slots}</div>`;
     } else if (status === 'available') {
       timesHtml = `<div class="day-room-times"><span class="open-label">Open all day</span></div>`;
@@ -1247,6 +1250,10 @@ function showDayDetail(dateStr, roomData) {
     buildRoomCard('B Room', roomData.b_room, roomData.b_room_booked) +
     buildRoomCard('Full Studio', roomData.full_studio, fullStudioNote);
 
+  // Store booked slots for validation
+  window._currentDayData = roomData;
+  window._currentDateStr = dateStr;
+
   // Populate booking form
   const form = document.getElementById('bookingForm');
   const roomSelect = document.getElementById('formRoom');
@@ -1256,6 +1263,7 @@ function showDayDetail(dateStr, roomData) {
   statusEl.textContent = '';
   statusEl.className = 'form-status';
   document.getElementById('formSubmit').disabled = false;
+  document.getElementById('formSubmit').textContent = 'Submit Booking Request';
 
   // Set date
   dateInput.value = dateStr;
@@ -1264,9 +1272,9 @@ function showDayDetail(dateStr, roomData) {
   // Populate room dropdown with available rooms only
   roomSelect.innerHTML = '';
   const roomOptions = [
-    {value: 'a_room', label: 'A Room — $200/hr', status: roomData.a_room},
-    {value: 'b_room', label: 'B Room — $100/hr', status: roomData.b_room},
-    {value: 'full_studio', label: 'Full Studio — $300/hr', status: roomData.full_studio}
+    {value: 'a_room', label: 'A Room — $200/hr', status: roomData.a_room, booked: roomData.a_room_booked || []},
+    {value: 'b_room', label: 'B Room — $100/hr', status: roomData.b_room, booked: roomData.b_room_booked || []},
+    {value: 'full_studio', label: 'Full Studio — $300/hr', status: roomData.full_studio, booked: (roomData.a_room_booked || []).concat(roomData.b_room_booked || [])}
   ];
   let hasAvailable = false;
   roomOptions.forEach(r => {
@@ -1274,6 +1282,7 @@ function showDayDetail(dateStr, roomData) {
       const opt = document.createElement('option');
       opt.value = r.value;
       opt.textContent = r.label + (r.status === 'partial' ? ' (partial)' : '');
+      opt.dataset.booked = JSON.stringify(r.booked);
       roomSelect.appendChild(opt);
       hasAvailable = true;
     }
@@ -1285,18 +1294,62 @@ function showDayDetail(dateStr, roomData) {
     form.style.display = 'block';
   }
 
-  // Populate time dropdowns
-  populateTimeDropdowns();
+  // Update time dropdowns based on selected room
+  roomSelect.onchange = () => updateTimeDropdowns();
+  updateTimeDropdowns();
 
   detail.classList.add('open');
   detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function populateTimeDropdowns() {
+function getBookedRangesForRoom() {
+  const roomSelect = document.getElementById('formRoom');
+  const selectedOpt = roomSelect.options[roomSelect.selectedIndex];
+  if (!selectedOpt || !selectedOpt.dataset.booked) return [];
+  try {
+    return JSON.parse(selectedOpt.dataset.booked);
+  } catch { return []; }
+}
+
+function timeToMinutes(t) {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function isTimeBlocked(timeVal, bookedRanges) {
+  const mins = timeToMinutes(timeVal);
+  for (const slot of bookedRanges) {
+    if (typeof slot === 'object' && slot.start && slot.end) {
+      const bStart = timeToMinutes(slot.start);
+      const bEnd = timeToMinutes(slot.end);
+      if (mins >= bStart && mins < bEnd) return true;
+    }
+  }
+  return false;
+}
+
+function doesRangeOverlap(startVal, endVal, bookedRanges) {
+  const rStart = timeToMinutes(startVal);
+  const rEnd = timeToMinutes(endVal);
+  for (const slot of bookedRanges) {
+    if (typeof slot === 'object' && slot.start && slot.end) {
+      const bStart = timeToMinutes(slot.start);
+      const bEnd = timeToMinutes(slot.end);
+      if (rStart < bEnd && rEnd > bStart) return slot.display || `${slot.start} - ${slot.end}`;
+    }
+  }
+  return false;
+}
+
+function updateTimeDropdowns() {
   const startSelect = document.getElementById('formStart');
   const endSelect = document.getElementById('formEnd');
+  const prevStart = startSelect.value;
+  const prevEnd = endSelect.value;
   startSelect.innerHTML = '';
   endSelect.innerHTML = '';
+
+  const bookedRanges = getBookedRangesForRoom();
 
   for (let h = 8; h <= 23; h++) {
     for (let m = 0; m < 60; m += 30) {
@@ -1304,22 +1357,39 @@ function populateTimeDropdowns() {
       const ampm = h >= 12 ? 'PM' : 'AM';
       const label = `${hour12}:${String(m).padStart(2,'0')} ${ampm}`;
       const value = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+      const blocked = isTimeBlocked(value, bookedRanges);
 
       const optS = document.createElement('option');
       optS.value = value;
-      optS.textContent = label;
+      optS.textContent = label + (blocked ? ' (booked)' : '');
+      optS.disabled = blocked;
       startSelect.appendChild(optS);
 
       const optE = document.createElement('option');
       optE.value = value;
-      optE.textContent = label;
+      optE.textContent = label + (blocked ? ' (booked)' : '');
+      optE.disabled = blocked;
       endSelect.appendChild(optE);
     }
   }
 
-  // Defaults: start at 10am, end at 6pm
-  startSelect.value = '10:00';
-  endSelect.value = '18:00';
+  // Try to restore previous values, or find first available
+  if (prevStart && !isTimeBlocked(prevStart, bookedRanges)) {
+    startSelect.value = prevStart;
+  } else {
+    const firstAvail = [...startSelect.options].find(o => !o.disabled);
+    if (firstAvail) startSelect.value = firstAvail.value;
+  }
+  if (prevEnd && !isTimeBlocked(prevEnd, bookedRanges)) {
+    endSelect.value = prevEnd;
+  } else {
+    // Default to 2 hours after start
+    const sv = timeToMinutes(startSelect.value);
+    const defaultEnd = `${String(Math.floor((sv + 120) / 60)).padStart(2,'0')}:${String((sv + 120) % 60).padStart(2,'0')}`;
+    if (!isTimeBlocked(defaultEnd, bookedRanges)) {
+      endSelect.value = defaultEnd;
+    }
+  }
 }
 
 async function submitBookingForm() {
@@ -1342,6 +1412,15 @@ async function submitBookingForm() {
   const [eh, em] = endTime.split(':').map(Number);
   const duration = (eh + em/60) - (sh + sm/60);
   if (duration <= 0) { statusEl.textContent = 'End time must be after start time.'; statusEl.className = 'form-status error'; return; }
+
+  // Check for overlap with existing bookings
+  const bookedRanges = getBookedRangesForRoom();
+  const overlap = doesRangeOverlap(startTime, endTime, bookedRanges);
+  if (overlap) {
+    statusEl.textContent = `This time conflicts with an existing booking (${overlap}). Please choose a different time.`;
+    statusEl.className = 'form-status error';
+    return;
+  }
 
   submitBtn.disabled = true;
   submitBtn.textContent = 'Submitting...';

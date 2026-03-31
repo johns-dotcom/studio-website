@@ -764,10 +764,12 @@ def monthly_availability(year, month):
             if date_key not in days:
                 continue
 
-            # Format times for display (e.g., "12:00 PM - 8:00 PM")
+            # Format times for display and for form validation
             start_display = start_dt.strftime("%-I:%M %p").lstrip("0")
             end_display = end_dt.strftime("%-I:%M %p").lstrip("0")
-            time_slot = f"{start_display} - {end_display}"
+            start_24 = start_dt.strftime("%H:%M")
+            end_24 = end_dt.strftime("%H:%M")
+            time_slot = {"display": f"{start_display} - {end_display}", "start": start_24, "end": end_24}
 
             # Determine which room(s) are affected
             is_a = any(tag in summary for tag in room_tags["a_room"])
