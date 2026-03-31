@@ -631,6 +631,153 @@ TOOL_HANDLERS = {
     "submit_booking_request": submit_booking_request,
 }
 
+# ── MONTHLY AVAILABILITY API ─────────────────────────────────────────────
+
+@app.route("/api/availability/<int:year>/<int:month>", methods=["GET"])
+def monthly_availability(year, month):
+    """Return availability summary for each day of the given month."""
+    import pytz
+    import calendar
+
+    tz = "America/Los_Angeles"
+    la_tz = pytz.timezone(tz)
+
+    # Calculate month bounds
+    _, days_in_month = calendar.monthrange(year, month)
+    month_start = la_tz.localize(datetime(year, month, 1))
+    if month == 12:
+        month_end = la_tz.localize(datetime(year + 1, 1, 1))
+    else:
+        month_end = la_tz.localize(datetime(year, month + 1, 1))
+
+    offset_start = month_start.strftime("%z")
+    offset_start_fmt = f"{offset_start[:3]}:{offset_start[3:]}"
+    offset_end = month_end.strftime("%z")
+    offset_end_fmt = f"{offset_end[:3]}:{offset_end[3:]}"
+
+    time_min = f"{year}-{month:02d}-01T00:00:00{offset_start_fmt}"
+    time_max = f"{year}-{month + 1 if month < 12 else 1:02d}-01T00:00:00{offset_end_fmt}"
+    if month == 12:
+        time_max = f"{year + 1}-01-01T00:00:00{offset_end_fmt}"
+
+    global _google_creds
+    if not _google_creds:
+        # No calendar — return all days as available
+        days = {}
+        for d in range(1, days_in_month + 1):
+            days[f"{year}-{month:02d}-{d:02d}"] = {
+                "a_room": "available",
+                "b_room": "available",
+                "full_studio": "available"
+            }
+        return jsonify({"year": year, "month": month, "days": days})
+
+    try:
+        from googleapiclient.discovery import build
+        from google.auth.transport.requests import Request
+
+        if not _google_creds.valid:
+            _google_creds.refresh(Request())
+
+        service = build("calendar", "v3", credentials=_google_creds)
+        calendar_id = config["google_calendar"].get("calendar_id", "primary")
+
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=time_min,
+            timeMax=time_max,
+            timeZone=tz,
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=500
+        ).execute()
+
+        raw_events = events_result.get("items", [])
+
+        # Only timed events (not all-day)
+        timed_events = [e for e in raw_events if "dateTime" in e.get("start", {})]
+
+        room_tags = {
+            "a_room": ["(a)", "(a room)"],
+            "b_room": ["(b)", "(b room)"],
+            "full_studio": ["(a+b)", "(full)", "(full studio)", "(lockout)"]
+        }
+
+        # Build per-day, per-room booking data
+        days = {}
+        for d in range(1, days_in_month + 1):
+            date_str = f"{year}-{month:02d}-{d:02d}"
+            days[date_str] = {"a_room_hours": 0, "b_room_hours": 0}
+
+        for event in timed_events:
+            start_str = event["start"]["dateTime"]
+            end_str = event["end"]["dateTime"]
+            summary = event.get("summary", "").lower()
+
+            # Parse start/end times
+            from dateutil import parser as dt_parser
+            start_dt = dt_parser.parse(start_str).astimezone(la_tz)
+            end_dt = dt_parser.parse(end_str).astimezone(la_tz)
+            hours = (end_dt - start_dt).total_seconds() / 3600
+
+            date_key = start_dt.strftime("%Y-%m-%d")
+            if date_key not in days:
+                continue
+
+            # Determine which room(s) are affected
+            is_a = any(tag in summary for tag in room_tags["a_room"])
+            is_b = any(tag in summary for tag in room_tags["b_room"])
+            is_full = any(tag in summary for tag in room_tags["full_studio"])
+            has_any_tag = is_a or is_b or is_full
+
+            if is_full or not has_any_tag:
+                days[date_key]["a_room_hours"] += hours
+                days[date_key]["b_room_hours"] += hours
+            else:
+                if is_a:
+                    days[date_key]["a_room_hours"] += hours
+                if is_b:
+                    days[date_key]["b_room_hours"] += hours
+
+        # Convert hours to status
+        result_days = {}
+        for date_str, data in days.items():
+            a_hours = data["a_room_hours"]
+            b_hours = data["b_room_hours"]
+
+            def status(h):
+                if h >= 10:
+                    return "booked"
+                elif h > 0:
+                    return "partial"
+                else:
+                    return "available"
+
+            a_status = status(a_hours)
+            b_status = status(b_hours)
+
+            # Full studio is only available if BOTH rooms are available
+            if a_status == "available" and b_status == "available":
+                full_status = "available"
+            elif a_status == "booked" or b_status == "booked":
+                full_status = "booked"
+            else:
+                full_status = "partial"
+
+            result_days[date_str] = {
+                "a_room": a_status,
+                "b_room": b_status,
+                "full_studio": full_status
+            }
+
+        return jsonify({"year": year, "month": month, "days": result_days})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 # ── BOOKING CONFIRMATION (creates calendar event) ──────────────────────────
 
 @app.route("/api/confirm/<booking_id>", methods=["GET"])
