@@ -366,6 +366,22 @@ section { padding: 7rem 2rem; }
 .day-room-status.available { color: var(--accent); }
 .day-room-status.partial { color: var(--warm-dark); }
 .day-room-status.booked { color: #C0392B; }
+.day-room-times {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.day-room-times .booked-slot {
+  display: block;
+  color: #C0392B;
+  font-weight: 500;
+}
+.day-room-times .open-label {
+  display: block;
+  color: var(--accent);
+  margin-top: 0.25rem;
+}
 .day-detail-cta {
   display: inline-block;
   margin-top: 1rem;
@@ -1065,26 +1081,32 @@ function showDayDetail(dateStr, roomData) {
   document.getElementById('dayDetailTitle').textContent = `${dayName}, ${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 
   const statusLabels = {
-    available: 'Available',
+    available: 'Open All Day',
     partial: 'Partially Booked',
     booked: 'Fully Booked'
   };
 
+  function buildRoomCard(name, status, bookedSlots) {
+    let timesHtml = '';
+    if (bookedSlots && bookedSlots.length > 0) {
+      const slots = bookedSlots.map(s => `<span class="booked-slot">Booked: ${s}</span>`).join('');
+      timesHtml = `<div class="day-room-times">${slots}</div>`;
+    } else if (status === 'available') {
+      timesHtml = `<div class="day-room-times"><span class="open-label">Open all day</span></div>`;
+    }
+    return `
+      <div class="day-room">
+        <div class="day-room-name">${name}</div>
+        <div class="day-room-status ${status}">${statusLabels[status] || 'Available'}</div>
+        ${timesHtml}
+      </div>`;
+  }
+
   const rooms = document.getElementById('dayDetailRooms');
-  rooms.innerHTML = `
-    <div class="day-room">
-      <div class="day-room-name">A Room</div>
-      <div class="day-room-status ${roomData.a_room}">${statusLabels[roomData.a_room] || 'Available'}</div>
-    </div>
-    <div class="day-room">
-      <div class="day-room-name">B Room</div>
-      <div class="day-room-status ${roomData.b_room}">${statusLabels[roomData.b_room] || 'Available'}</div>
-    </div>
-    <div class="day-room">
-      <div class="day-room-name">Full Studio</div>
-      <div class="day-room-status ${roomData.full_studio}">${statusLabels[roomData.full_studio] || 'Available'}</div>
-    </div>
-  `;
+  rooms.innerHTML =
+    buildRoomCard('A Room', roomData.a_room, roomData.a_room_booked) +
+    buildRoomCard('B Room', roomData.b_room, roomData.b_room_booked) +
+    buildRoomCard('Full Studio', roomData.full_studio, roomData.full_studio_booked);
 
   detail.classList.add('open');
   detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

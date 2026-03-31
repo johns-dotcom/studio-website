@@ -707,7 +707,12 @@ def monthly_availability(year, month):
         days = {}
         for d in range(1, days_in_month + 1):
             date_str = f"{year}-{month:02d}-{d:02d}"
-            days[date_str] = {"a_room_hours": 0, "b_room_hours": 0}
+            days[date_str] = {
+                "a_room_hours": 0, "b_room_hours": 0,
+                "a_room_slots": [], "b_room_slots": []
+            }
+
+        from dateutil import parser as dt_parser
 
         for event in timed_events:
             start_str = event["start"]["dateTime"]
@@ -715,7 +720,6 @@ def monthly_availability(year, month):
             summary = event.get("summary", "").lower()
 
             # Parse start/end times
-            from dateutil import parser as dt_parser
             start_dt = dt_parser.parse(start_str).astimezone(la_tz)
             end_dt = dt_parser.parse(end_str).astimezone(la_tz)
             hours = (end_dt - start_dt).total_seconds() / 3600
@@ -723,6 +727,11 @@ def monthly_availability(year, month):
             date_key = start_dt.strftime("%Y-%m-%d")
             if date_key not in days:
                 continue
+
+            # Format times for display (e.g., "12:00 PM - 8:00 PM")
+            start_display = start_dt.strftime("%-I:%M %p").lstrip("0")
+            end_display = end_dt.strftime("%-I:%M %p").lstrip("0")
+            time_slot = f"{start_display} - {end_display}"
 
             # Determine which room(s) are affected
             is_a = any(tag in summary for tag in room_tags["a_room"])
@@ -733,13 +742,17 @@ def monthly_availability(year, month):
             if is_full or not has_any_tag:
                 days[date_key]["a_room_hours"] += hours
                 days[date_key]["b_room_hours"] += hours
+                days[date_key]["a_room_slots"].append(time_slot)
+                days[date_key]["b_room_slots"].append(time_slot)
             else:
                 if is_a:
                     days[date_key]["a_room_hours"] += hours
+                    days[date_key]["a_room_slots"].append(time_slot)
                 if is_b:
                     days[date_key]["b_room_hours"] += hours
+                    days[date_key]["b_room_slots"].append(time_slot)
 
-        # Convert hours to status
+        # Convert hours to status and build result
         result_days = {}
         for date_str, data in days.items():
             a_hours = data["a_room_hours"]
@@ -764,10 +777,16 @@ def monthly_availability(year, month):
             else:
                 full_status = "partial"
 
+            # Combine booked slots for full studio view
+            full_slots = sorted(set(data["a_room_slots"] + data["b_room_slots"]))
+
             result_days[date_str] = {
                 "a_room": a_status,
                 "b_room": b_status,
-                "full_studio": full_status
+                "full_studio": full_status,
+                "a_room_booked": data["a_room_slots"],
+                "b_room_booked": data["b_room_slots"],
+                "full_studio_booked": full_slots
             }
 
         return jsonify({"year": year, "month": month, "days": result_days})
