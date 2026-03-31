@@ -777,16 +777,12 @@ def monthly_availability(year, month):
             else:
                 full_status = "partial"
 
-            # Combine booked slots for full studio view
-            full_slots = sorted(set(data["a_room_slots"] + data["b_room_slots"]))
-
             result_days[date_str] = {
                 "a_room": a_status,
                 "b_room": b_status,
                 "full_studio": full_status,
                 "a_room_booked": data["a_room_slots"],
-                "b_room_booked": data["b_room_slots"],
-                "full_studio_booked": full_slots
+                "b_room_booked": data["b_room_slots"]
             }
 
         return jsonify({"year": year, "month": month, "days": result_days})

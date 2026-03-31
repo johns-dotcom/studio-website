@@ -1102,11 +1102,25 @@ function showDayDetail(dateStr, roomData) {
       </div>`;
   }
 
+  // Full Studio: show which room(s) are blocking it instead of time slots
+  let fullStudioNote = null;
+  if (roomData.full_studio !== 'available') {
+    const aBooked = roomData.a_room_booked && roomData.a_room_booked.length > 0;
+    const bBooked = roomData.b_room_booked && roomData.b_room_booked.length > 0;
+    if (aBooked && bBooked) {
+      fullStudioNote = ['A Room & B Room have bookings'];
+    } else if (aBooked) {
+      fullStudioNote = ['A Room has a booking'];
+    } else if (bBooked) {
+      fullStudioNote = ['B Room has a booking'];
+    }
+  }
+
   const rooms = document.getElementById('dayDetailRooms');
   rooms.innerHTML =
     buildRoomCard('A Room', roomData.a_room, roomData.a_room_booked) +
     buildRoomCard('B Room', roomData.b_room, roomData.b_room_booked) +
-    buildRoomCard('Full Studio', roomData.full_studio, roomData.full_studio_booked);
+    buildRoomCard('Full Studio', roomData.full_studio, fullStudioNote);
 
   detail.classList.add('open');
   detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
